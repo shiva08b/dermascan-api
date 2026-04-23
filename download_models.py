@@ -5,7 +5,7 @@ os.makedirs('models', exist_ok=True)
 
 files = [
     'screener.onnx',
-    'screener.onnx.data', 
+    'screener.onnx.data',
     'classifier.onnx',
     'classifier.onnx.data'
 ]
@@ -15,8 +15,8 @@ for f in files:
     hf_hub_download(
         repo_id='shivanibutolia/dermascan-models',
         filename=f,
-        local_dir='models',
-        token=os.environ.get('HF_API_KEY')
+        local_dir='models'
+        # no token needed for public repo
     )
     print(f'✅ {f} done')
 
