@@ -44,6 +44,11 @@ def _get_model():
         model.eval()
         logger.info("ViT model ready.")
         return processor, model
+    except ImportError:
+        raise RuntimeError(
+            "ViT requires torch and transformers. "
+            "Run: pip install transformers torch torchvision"
+        )
     except Exception as exc:
         logger.error("Failed to load ViT model: %s", exc)
         raise
