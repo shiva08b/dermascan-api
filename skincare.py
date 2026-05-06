@@ -1,4 +1,4 @@
-import os, asyncio, aiohttp, json
+import os, asyncio, aiohttp, json, re
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -184,3 +184,121 @@ async def get_skincare_routine(
             return {"provider": "gemini_fallback", "routine": fallback, "status": "fallback"}
         except:
             return {"provider": "none", "routine": str(e), "status": "error"}
+
+
+# ── JSON extraction helper ─────────────────────────────────────
+def _extract_json(text: str) -> str:
+    """Pull a JSON array/object out of text that may contain markdown fences."""
+    # strip ```json ... ``` or ``` ... ```
+    m = re.search(r'```(?:json)?\s*([\[{][\s\S]*?)\s*```', text, re.DOTALL)
+    if m:
+        return m.group(1)
+    # bare JSON array
+    m = re.search(r'(\[[\s\S]*\])', text)
+    if m:
+        return m.group(1)
+    return text
+
+
+# ── Products prompt ────────────────────────────────────────────
+def build_products_prompt(acne_type: str, severity: str, skin_type: str, tags: list) -> str:
+    tag_str = ', '.join(tags) if tags else 'general'
+    return f"""You are a skincare product recommendation expert for the Indian market.
+A patient has {acne_type.replace('_', ' ')} acne of {severity} severity with {skin_type} skin type.
+AI analysis ingredient tags: {tag_str}
+
+Return ONLY a valid JSON array of exactly 5 product objects. No explanation, no markdown code fences, just the raw JSON array.
+
+Each object MUST follow this exact structure:
+{{
+  "id": "ai-prod-1",
+  "name": "Actual product name",
+  "brand": "Real brand name",
+  "category": "Cleanser",
+  "sponsored": false,
+  "price": 599,
+  "rating": 4.5,
+  "offer": "Brief offer description",
+  "retailer": "Nykaa",
+  "skinTypes": ["{skin_type}"],
+  "concernTags": ["salicylic_acid"],
+  "description": "One sentence explaining why this product helps this acne type."
+}}
+
+Rules:
+- Use real, well-known brands: CeraVe, Minimalist, The Ordinary, Biotique, Himalaya, Mamaearth, Dot & Key, Plum, Cetaphil, Neutrogena, La Roche-Posay, Reequil, The Inkey List, COSRX, Acne-Aid
+- Exactly 2 products must have "sponsored": true, 3 must have "sponsored": false
+- Categories: Cleanser, Serum, Moisturizer, Sunscreen, Toner, Treatment
+- Retailers: Amazon, Nykaa, Flipkart, Tira, Sephora, Myntra, Kindlife
+- Price in INR only, range 150-2500
+- IDs must be: ai-prod-1, ai-prod-2, ai-prod-3, ai-prod-4, ai-prod-5"""
+
+
+# ── Remedies prompt ────────────────────────────────────────────
+def build_remedies_prompt(acne_type: str, skin_type: str) -> str:
+    return f"""You are a dermatologist specializing in evidence-based home remedies for Indian skin types.
+A patient has {acne_type.replace('_', ' ')} acne with {skin_type} skin type.
+
+Return ONLY a valid JSON array of exactly 3 home remedy objects. No explanation, no markdown code fences, just the raw JSON array.
+
+Each object MUST follow this exact structure:
+{{
+  "id": "ai-remedy-1",
+  "title": "Descriptive remedy title",
+  "bestFor": ["{skin_type}"],
+  "ingredients": ["2 tsp honey", "1 tbsp yogurt"],
+  "steps": ["Step 1 detail", "Step 2 detail", "Step 3 detail"],
+  "usage": "How often and when to apply",
+  "precautions": "One important precaution or contraindication"
+}}
+
+Rules:
+- Use ingredients commonly available in Indian households
+- Each remedy must have 3-5 ingredients and exactly 3 steps
+- Tailor specifically to {acne_type.replace('_', ' ')} acne on {skin_type} skin
+- Include measurement quantities in ingredients
+- IDs must be: ai-remedy-1, ai-remedy-2, ai-remedy-3"""
+
+
+# ── AI products generator ──────────────────────────────────────
+async def get_ai_products(
+    acne_type: str,
+    severity: str,
+    skin_type: str,
+    tags: list,
+    provider: str = "gemini"
+) -> list:
+    prompt = build_products_prompt(acne_type, severity, skin_type, tags)
+    async def _parse(text: str) -> list:
+        data = json.loads(_extract_json(text))
+        return data if isinstance(data, list) else []
+
+    try:
+        fn = PROVIDERS.get(provider, call_gemini)
+        return await _parse(await fn(prompt))
+    except Exception:
+        try:
+            return await _parse(await call_gemini(prompt))
+        except Exception:
+            return []
+
+
+# ── AI remedies generator ──────────────────────────────────────
+async def get_ai_remedies(
+    acne_type: str,
+    skin_type: str,
+    provider: str = "gemini"
+) -> list:
+    prompt = build_remedies_prompt(acne_type, skin_type)
+    async def _parse(text: str) -> list:
+        data = json.loads(_extract_json(text))
+        return data if isinstance(data, list) else []
+
+    try:
+        fn = PROVIDERS.get(provider, call_gemini)
+        return await _parse(await fn(prompt))
+    except Exception:
+        try:
+            return await _parse(await call_gemini(prompt))
+        except Exception:
+            return []
