@@ -1,7 +1,9 @@
-import os, asyncio, aiohttp, json, re
+import os, asyncio, aiohttp, json, re, logging
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger("skincare")
 
 GEMINI_KEY     = os.getenv("GEMINI_API_KEY")
 GROQ_KEY       = os.getenv("GROQ_API_KEY")
@@ -275,11 +277,17 @@ async def get_ai_products(
 
     try:
         fn = PROVIDERS.get(provider, call_gemini)
-        return await _parse(await fn(prompt))
-    except Exception:
+        result = await _parse(await fn(prompt))
+        logger.info("get_ai_products: returned %d items", len(result))
+        return result
+    except Exception as e:
+        logger.error("get_ai_products primary failed (%s): %s", provider, e)
         try:
-            return await _parse(await call_gemini(prompt))
-        except Exception:
+            result = await _parse(await call_gemini(prompt))
+            logger.info("get_ai_products fallback: returned %d items", len(result))
+            return result
+        except Exception as e2:
+            logger.error("get_ai_products fallback also failed: %s", e2)
             return []
 
 
@@ -296,9 +304,15 @@ async def get_ai_remedies(
 
     try:
         fn = PROVIDERS.get(provider, call_gemini)
-        return await _parse(await fn(prompt))
-    except Exception:
+        result = await _parse(await fn(prompt))
+        logger.info("get_ai_remedies: returned %d items", len(result))
+        return result
+    except Exception as e:
+        logger.error("get_ai_remedies primary failed (%s): %s", provider, e)
         try:
-            return await _parse(await call_gemini(prompt))
-        except Exception:
+            result = await _parse(await call_gemini(prompt))
+            logger.info("get_ai_remedies fallback: returned %d items", len(result))
+            return result
+        except Exception as e2:
+            logger.error("get_ai_remedies fallback also failed: %s", e2)
             return []
